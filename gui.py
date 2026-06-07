@@ -6,7 +6,7 @@ import subprocess
 import threading
 from datetime import datetime
 from tkinter.scrolledtext import ScrolledText
-from yt_dlp.cookies import SUPPORTED_BROWSERS
+from yt_dlp.cookies import SUPPORTED_BROWSERS, SUPPORTED_KEYRINGS
 
 
 class YouTubeDownloaderGUI:
@@ -26,9 +26,11 @@ class YouTubeDownloaderGUI:
         self.selected_quality = None
         self.available_qualities = []
         self.subtitle_tracks = {}
+        self.no_keyring_option = "Auto-detect keyring"
         self.no_browser_cookies_option = "No browser cookies"
         self.no_subtitle_option = "No subtitles"
         self.browser_options = [self.no_browser_cookies_option, *sorted(SUPPORTED_BROWSERS)]
+        self.keyring_options = [self.no_keyring_option, *sorted(SUPPORTED_KEYRINGS)]
 
         # Create and set up all GUI elements
         self.setup_gui_elements()
@@ -64,12 +66,29 @@ class YouTubeDownloaderGUI:
         self.browser_profile_entry = ttk.Entry(auth_frame)
         self.browser_profile_entry.grid(row=1, column=1, padx=5, pady=5, sticky="ew")
 
+        keyring_label = ttk.Label(auth_frame, text="Chromium keyring (optional):")
+        keyring_label.grid(row=2, column=0, padx=5, pady=5, sticky="w")
+
+        self.keyring_combobox = ttk.Combobox(auth_frame, state="readonly", values=self.keyring_options)
+        self.keyring_combobox.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
+        self.keyring_combobox.set(self.no_keyring_option)
+
+        container_label = ttk.Label(auth_frame, text='Firefox container (optional):')
+        container_label.grid(row=3, column=0, padx=5, pady=5, sticky="w")
+
+        self.browser_container_entry = ttk.Entry(auth_frame)
+        self.browser_container_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+
         auth_hint = ttk.Label(
             auth_frame,
-            text="Use a browser session when a video requires login, such as members-only content.",
+            text=(
+                'Use a browser session when a video requires login, such as members-only content. '
+                'For Chromium browsers on Linux, you can override the cookie keyring. '
+                'For Firefox, enter a container name or "none" to load cookies outside containers only.'
+            ),
             wraplength=520,
         )
-        auth_hint.grid(row=2, column=0, columnspan=2, padx=5, pady=(0, 5), sticky="w")
+        auth_hint.grid(row=4, column=0, columnspan=2, padx=5, pady=(0, 5), sticky="w")
 
         # Video Information section
         info_frame = ttk.LabelFrame(self.root, text="Video Information", padding=(10, 5))
@@ -150,7 +169,10 @@ class YouTubeDownloaderGUI:
             return None
 
         profile = self.browser_profile_entry.get().strip() or None
-        return browser_name, profile, None, None
+        keyring = self.keyring_combobox.get()
+        keyring = None if keyring == self.no_keyring_option else keyring
+        container = self.browser_container_entry.get().strip() or None
+        return browser_name, profile, keyring, container
 
     def build_ydl_opts(self, *, quiet=False):
         """Build shared yt-dlp options for metadata fetch and downloads."""
@@ -166,10 +188,18 @@ class YouTubeDownloaderGUI:
         if not browser_cookie_spec:
             return None
 
-        browser_name, profile, _, _ = browser_cookie_spec
+        browser_name, profile, keyring, container = browser_cookie_spec
+        details = []
         if profile:
-            return f"{browser_name} ({profile})"
-        return browser_name
+            details.append(f"profile={profile}")
+        if keyring:
+            details.append(f"keyring={keyring}")
+        if container:
+            details.append(f"container={container}")
+
+        if not details:
+            return browser_name
+        return f"{browser_name} ({', '.join(details)})"
 
     def format_size(self, bytes):
         """Convert bytes to human readable format."""
